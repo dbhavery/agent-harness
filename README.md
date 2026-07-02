@@ -18,6 +18,17 @@ real-LLM planner exists behind environment variables only.
 
 ---
 
+## Start here (for reviewers)
+
+Three demos show the failure machinery, not a happy path:
+
+    pip install -e ".[dev]"
+    python -m agent_harness demo flaky_recovery      # retries a flaky tool, classifies it transient, recovers
+    python -m agent_harness demo timeout_then_cache  # bounded timeout -> classified -> cache fallback
+    python -m agent_harness demo unsafe_blocked      # safety gate blocks an unsafe action
+
+Then read `tests/` (45 tests, one per operational edge case) and open the generated `reports/trace-report.html`.
+
 ## Quick start (copy-paste)
 
 ```bash
