@@ -1,0 +1,22 @@
+{
+  "flaky_recovery": {
+    "goal": "Answer an ops question, then fetch a flaky upstream record that recovers on retry.",
+    "steps": [
+      { "tool": "doc_search", "args": { "query": "retry backoff timeout", "top_k": 2 } },
+      { "tool": "calc_units", "args": { "op": "convert", "value": 26.2, "from_unit": "mi", "to_unit": "km" } },
+      { "tool": "flaky_api", "args": { "resource": "order-8841", "action": "read" } }
+    ]
+  },
+  "timeout_then_cache": {
+    "goal": "Hit an upstream that hangs; bound it with a deadline and degrade to cache.",
+    "steps": [
+      { "tool": "flaky_api", "args": { "resource": "order-8841", "action": "read" } }
+    ]
+  },
+  "unsafe_blocked": {
+    "goal": "Attempt a destructive action that the safety gate must block.",
+    "steps": [
+      { "tool": "flaky_api", "args": { "resource": "prod-db", "action": "delete" } }
+    ]
+  }
+}

@@ -1,0 +1,4 @@
+# Runtime deps (kept minimal; stdlib does the rest).
+pydantic>=2.6
+# Dev / test:
+pytest>=8.0

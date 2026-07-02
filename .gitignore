@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.venv/
+venv/
+
+# Harness run artifacts (kept out of git; regenerate with the demo).
+traces/*.jsonl
+reports/*.html
+
+# OS
+.DS_Store
+Thumbs.db
