@@ -18,5 +18,5 @@
   steps ok/deg/fail: 0/1/0
   classifications: timeout
   answer:          flaky_api: order-8841 -> stale-order-8841 [cache] (from cache)
-  trace:           C:\Users\dbhav\Projects\agent-harness\traces\demo-timeout_then_cache.jsonl
-  report:          C:\Users\dbhav\Projects\agent-harness\reports\trace-report.html
+  trace:           C:\Users\dev\Projects\agent-harness\traces\demo-timeout_then_cache.jsonl
+  report:          C:\Users\dev\Projects\agent-harness\reports\trace-report.html

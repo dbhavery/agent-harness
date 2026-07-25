@@ -20,5 +20,5 @@
   status:          OK
   steps ok/deg/fail: 3/0/0
   answer:          doc_search: top hit 'Retry & backoff runbook' (score 0.6667) | calc_units: = 42.164813 km | flaky_api: order-8841 -> live-data::order-8841 [live]
-  trace:           C:\Users\dbhav\Projects\agent-harness\traces\demo-flaky_recovery.jsonl
-  report:          C:\Users\dbhav\Projects\agent-harness\reports\trace-report.html
+  trace:           C:\Users\dev\Projects\agent-harness\traces\demo-flaky_recovery.jsonl
+  report:          C:\Users\dev\Projects\agent-harness\reports\trace-report.html

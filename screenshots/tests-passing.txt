@@ -1,6 +1,6 @@
 ============================= test session starts =============================
 platform win32 -- Python 3.14.3, pytest-9.0.2, pluggy-1.6.0
-rootdir: C:\Users\dbhav\Projects\agent-harness
+rootdir: C:\Users\dev\Projects\agent-harness
 configfile: pyproject.toml
 testpaths: tests
 plugins: cov-7.1.0, anyio-4.13.0, asyncio-1.4.0, timeout-2.4.0, typeguard-4.5.1
