@@ -109,6 +109,7 @@ def _execute_once(
         lambda: tool.run(request, attempt),          # -> Transient / MissingContext
         deadline_ms=remaining_ms,
         label=tool.name,
+        clock=clock,
         already_elapsed_ms=elapsed_ms,
     )
     out = tool.validate_output(outcome.value)        # -> MalformedOutput

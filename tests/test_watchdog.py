@@ -17,6 +17,7 @@ import threading
 import time
 
 from agent_harness.classification import FailureClass
+from agent_harness.clock import SystemClock
 from agent_harness.orchestrator import Orchestrator
 from agent_harness.retry import RetryPolicy
 from agent_harness.schemas import FlakyApiInput, FlakyApiOutput, Plan, ToolStep
@@ -130,10 +131,11 @@ def test_tool_that_hangs_and_reports_nothing_is_cut_off(clock):
     assert wall_ms < 2000.0, f"run took {wall_ms:.0f}ms; a hang was not bounded"
 
 
-def test_successful_call_is_traced_with_its_measured_duration(clock):
+def test_successful_call_is_traced_with_its_measured_duration():
     # Declares 5ms, really takes ~80ms, finishes inside the 500ms budget.
+    # On the real clock, so the duration in the trace is real wall time.
     tool = LyingLatencyTool(declared_ms=5.0, real_sleep_s=0.08)
-    orch = _orch(tool, clock)
+    orch = _orch(tool, SystemClock(start=0.0))
     plan = Plan(
         goal="g",
         steps=[ToolStep(tool="slow_api", args={"resource": "r"}, timeout_ms=500)],
@@ -151,7 +153,7 @@ def test_successful_call_is_traced_with_its_measured_duration(clock):
 
 def test_declared_latency_is_kept_as_trace_metadata(clock):
     """The self-reported number is still useful; it just decides nothing."""
-    tool = LyingLatencyTool(declared_ms=5.0, real_sleep_s=0.08)
+    tool = LyingLatencyTool(declared_ms=5.0, real_sleep_s=0.0)
     orch = _orch(tool, clock)
     plan = Plan(
         goal="g",
