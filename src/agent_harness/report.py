@@ -120,7 +120,7 @@ def render_html(events: list[TraceEvent]) -> str:
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Agent harness trace — {html.escape(run_id)}</title>
+<title>Agent harness trace: {html.escape(run_id)}</title>
 <style>
   :root {{ color-scheme: dark; }}
   * {{ box-sizing: border-box; }}
@@ -159,7 +159,7 @@ def render_html(events: list[TraceEvent]) -> str:
   .col-detail {{ max-width: 46ch; }}
 </style></head>
 <body>
-  <h1>Agent orchestration reliability harness — trace report</h1>
+  <h1>Agent orchestration reliability harness, trace report</h1>
   <p class="sub">Deterministic, offline. Rendered from JSONL; no external assets.</p>
   {header}
   {body}
