@@ -17,16 +17,23 @@ from dataclasses import dataclass, field
 #: Default spend ceiling for one run, in US dollars.
 DEFAULT_MAX_COST_USD = 1.00
 
+#: Default ceiling on how many plan steps one run may execute. Set above the
+#: longest shipped plan and far below a runaway loop.
+DEFAULT_MAX_STEPS = 20
+
 
 @dataclass(slots=True)
 class RunLimits:
     """Ceilings applied to a whole run. ``None`` disables a ceiling."""
 
     max_cost_usd: float | None = DEFAULT_MAX_COST_USD
+    max_steps: int | None = DEFAULT_MAX_STEPS
 
     def __post_init__(self) -> None:
         if self.max_cost_usd is not None and self.max_cost_usd < 0:
             raise ValueError("max_cost_usd cannot be negative")
+        if self.max_steps is not None and self.max_steps < 1:
+            raise ValueError("max_steps must be at least 1")
 
 
 @dataclass(slots=True)

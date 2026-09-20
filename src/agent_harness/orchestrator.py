@@ -178,10 +178,28 @@ class Orchestrator:
             args={
                 "steps": [s.tool for s in plan.steps],
                 "max_cost_usd": self.limits.max_cost_usd,
+                "max_steps": self.limits.max_steps,
             },
         )
 
         for step in plan.steps:
+            # Step ceiling, checked before the step and not after it, so the
+            # step past the ceiling is never executed.
+            if (
+                self.limits.max_steps is not None
+                and len(outcomes) >= self.limits.max_steps
+            ):
+                halt_reason = self._emit_halt(
+                    bus,
+                    step_id + 1,
+                    None,
+                    FailureClass.STEP_LIMIT,
+                    f"executed {len(outcomes)} of {len(plan.steps)} planned step(s); "
+                    f"ceiling is {self.limits.max_steps}",
+                )
+                failure_classes.append(FailureClass.STEP_LIMIT.value)
+                break
+
             step_id += 1
             outcome = self._run_step(bus, step_id, step, ledger)
             outcomes.append(outcome)
@@ -336,6 +354,25 @@ class Orchestrator:
         )
 
     # ------------------------------------------------------------------ #
+    def _emit_halt(
+        self,
+        bus: tr.TraceBus,
+        step_id: int,
+        tool_name: str | None,
+        fc: FailureClass,
+        detail: str,
+    ) -> str:
+        """Record a ceiling breach on the trace and return the halt reason."""
+        bus.emit(
+            tr.LIMIT,
+            step_id=step_id,
+            tool=tool_name,
+            outcome="halted",
+            classification=fc.value,
+            detail=f"run halted: {detail}",
+        )
+        return f"{fc.value}: {detail}"
+
     def _halt(
         self,
         bus: tr.TraceBus,
@@ -350,20 +387,13 @@ class Orchestrator:
         carrying on to the next paid step is exactly what the ceiling exists to
         prevent, so this path deliberately has no degrade.
         """
-        bus.emit(
-            tr.LIMIT,
-            step_id=step_id,
-            tool=tool_name,
-            outcome="halted",
-            classification=fc.value,
-            detail=f"run halted: {detail}",
-        )
+        reason = self._emit_halt(bus, step_id, tool_name, fc, detail)
         return StepOutcome(
             tool=tool_name or "(run)",
             status="failed",
             summary=f"run halted at {fc.value}: {detail}",
             failure_class=fc,
-            halt_reason=f"{fc.value}: {detail}",
+            halt_reason=reason,
         )
 
     # ------------------------------------------------------------------ #
@@ -433,6 +463,10 @@ class Orchestrator:
         if failed and not (ok or degraded):
             status = "failed"
         elif failed or degraded:
+            status = "degraded"
+        elif halt_reason is not None:
+            # Every attempted step worked, but the run stopped short of its plan.
+            # Calling that "ok" would hide the ceiling that fired.
             status = "degraded"
         else:
             status = "ok"

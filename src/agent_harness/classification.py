@@ -21,6 +21,7 @@ class FailureClass(str, Enum):
     TRANSIENT = "transient"                 # temporary fault, worth retrying
     SCHEMA_VIOLATION = "schema_violation"   # input failed contract validation
     COST_LIMIT = "cost_limit"               # run reached its spend ceiling
+    STEP_LIMIT = "step_limit"               # run reached its step ceiling
 
 
 # Which classes are worth retrying. Retrying a schema violation or an unsafe
@@ -81,10 +82,18 @@ class CostLimitExceeded(HarnessError):
     failure_class = FailureClass.COST_LIMIT
 
 
+class StepLimitExceeded(HarnessError):
+    """The run has executed as many steps as it is allowed."""
+
+    failure_class = FailureClass.STEP_LIMIT
+
+
 #: Failure classes that end the whole run rather than just the current step.
 #: A ceiling is not a per-step fault: falling back to a cached answer and then
 #: carrying on to the next paid step would defeat the point of having one.
-HALTING: frozenset[FailureClass] = frozenset({FailureClass.COST_LIMIT})
+HALTING: frozenset[FailureClass] = frozenset(
+    {FailureClass.COST_LIMIT, FailureClass.STEP_LIMIT}
+)
 
 
 def classify(exc: BaseException) -> FailureClass:
