@@ -3,7 +3,9 @@
 The loop is intentionally small and inspectable. For each planned step it:
 
 1. runs the :class:`~agent_harness.safety.SafetyGate` (blocks unsafe actions);
-2. executes the tool through a validated, deadline-bounded executor;
+2. executes the tool through a validated executor whose deadline is enforced by
+   a wall-clock watchdog (:mod:`agent_harness.watchdog`), so a tool that
+   under-reports its latency or hangs outright is cut off;
 3. retries retryable failures with exponential backoff;
 4. on exhausted retries, takes a fallback path (cached/secondary source) or a
    safe refusal;
@@ -34,6 +36,7 @@ from .safety import SafetyGate
 from .schemas import Plan, RunResult, ToolStep
 from .tools.base import Tool
 from .tools.flaky_api import FlakyApiTool
+from .watchdog import call_with_watchdog
 
 
 @dataclass(slots=True)
@@ -45,31 +48,71 @@ class StepOutcome:
     failure_class: FailureClass | None = None
 
 
+@dataclass(slots=True)
+class Measured:
+    """Timing for one execution attempt.
+
+    ``elapsed_ms`` is what the deadline was checked against and what the trace
+    records. ``declared_ms`` is the tool's own claim about itself, kept only as
+    metadata: it decides nothing.
+    """
+
+    elapsed_ms: float
+    declared_ms: float
+
+
 def _execute_once(
     tool: Tool,
     raw_args: dict[str, Any],
     deadline_ms: float | None,
     clock: Clock,
     attempt: int,
-) -> tuple[Any, float]:
-    """One validated, deadline-bounded execution attempt.
+) -> tuple[Any, Measured]:
+    """One validated attempt, bounded by a wall-clock watchdog.
+
+    The deadline is enforced against *measured* time, never against the tool's
+    self-reported ``next_latency_ms``. A tool that lies about its latency, or
+    that hangs and reports nothing, is cut off by
+    :func:`~agent_harness.watchdog.call_with_watchdog`.
+
+    The declared latency still has a job: the scripted demo tools model slowness
+    by declaring it, and that simulated wait is spent through the injected clock
+    so the demo stays deterministic. It is capped at the budget, and what the
+    budget is compared against afterwards is elapsed time.
 
     Raises classified :class:`HarnessError` subclasses on any contract breach or
-    fault. Returns ``(validated_output, latency_ms)`` on success.
+    fault. Returns ``(validated_output, Measured)`` on success.
     """
     request = tool.validate_input(raw_args)          # -> SchemaViolation
-    latency = tool.next_latency_ms(request, attempt)
-    if deadline_ms is not None and latency > deadline_ms:
-        # Model a hang: we "wait" up to the budget, then abort as a timeout.
-        clock.sleep(deadline_ms / 1000.0)
-        raise ToolTimeout(
-            f"{tool.name} exceeded {deadline_ms:.0f}ms deadline",
-            detail=f"declared latency {latency:.0f}ms > budget {deadline_ms:.0f}ms",
-        )
-    clock.sleep(latency / 1000.0)
-    raw_out = tool.run(request, attempt)             # -> Transient / MissingContext
-    out = tool.validate_output(raw_out)              # -> MalformedOutput
-    return out, latency
+    declared_ms = tool.next_latency_ms(request, attempt)
+
+    started = clock.now()
+    simulated_ms = declared_ms if deadline_ms is None else min(declared_ms, deadline_ms)
+    if simulated_ms > 0:
+        clock.sleep(simulated_ms / 1000.0)
+    elapsed_ms = (clock.now() - started) * 1000.0
+
+    remaining_ms: float | None = None
+    if deadline_ms is not None:
+        remaining_ms = deadline_ms - elapsed_ms
+        if remaining_ms <= 0:
+            raise ToolTimeout(
+                f"{tool.name} exceeded its {deadline_ms:.0f}ms deadline",
+                detail=(
+                    f"measured {elapsed_ms:.0f}ms >= budget {deadline_ms:.0f}ms "
+                    f"(tool declared {declared_ms:.0f}ms)"
+                ),
+                measured_ms=elapsed_ms,
+            )
+
+    outcome = call_with_watchdog(
+        lambda: tool.run(request, attempt),          # -> Transient / MissingContext
+        deadline_ms=remaining_ms,
+        label=tool.name,
+        already_elapsed_ms=elapsed_ms,
+    )
+    out = tool.validate_output(outcome.value)        # -> MalformedOutput
+    return out, Measured(elapsed_ms=outcome.elapsed_ms, declared_ms=declared_ms)
 
 
 class Orchestrator:
@@ -195,7 +238,7 @@ class Orchestrator:
             )
 
         try:
-            (output, latency), _records = run_with_retry(
+            (output, measured), _records = run_with_retry(
                 lambda attempt: _execute_once(
                     tool, step.args, deadline, self.clock, attempt
                 ),
@@ -211,6 +254,9 @@ class Orchestrator:
                 step_id=step_id,
                 tool=tool.name,
                 outcome="error",
+                # Measured duration of the failed attempt, when the watchdog or
+                # the deadline check timed it. Never the tool's own claim.
+                latency_ms=getattr(exc, "measured_ms", None),
                 classification=fc.value,
                 detail=f"retries exhausted / non-retryable: {detail}",
             )
@@ -223,10 +269,17 @@ class Orchestrator:
             step_id=step_id,
             tool=tool.name,
             outcome="ok",
-            latency_ms=latency,
-            detail=summary,
+            latency_ms=measured.elapsed_ms,
+            args={"declared_ms": measured.declared_ms},
+            detail=f"{summary} [measured {measured.elapsed_ms:.0f}ms, "
+            f"declared {measured.declared_ms:.0f}ms]",
         )
-        return StepOutcome(tool=tool.name, status="ok", summary=summary, latency_ms=latency)
+        return StepOutcome(
+            tool=tool.name,
+            status="ok",
+            summary=summary,
+            latency_ms=measured.elapsed_ms,
+        )
 
     # ------------------------------------------------------------------ #
     def _fallback(

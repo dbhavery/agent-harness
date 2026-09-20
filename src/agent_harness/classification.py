@@ -35,9 +35,19 @@ class HarnessError(Exception):
 
     failure_class: FailureClass
 
-    def __init__(self, message: str, *, detail: str | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        detail: str | None = None,
+        measured_ms: float | None = None,
+    ) -> None:
         super().__init__(message)
         self.detail = detail or message
+        #: Measured wall-clock duration of the failed attempt, when known. Set
+        #: by the watchdog so a timeout is traced with its real duration rather
+        #: than whatever the tool claimed.
+        self.measured_ms = measured_ms
 
 
 class SchemaViolation(HarnessError):
