@@ -20,6 +20,7 @@ from .scenarios import SCENARIOS, build_harness
 from .trace import (
     CLASSIFY,
     FALLBACK,
+    LIMIT,
     RETRY,
     SAFETY_BLOCK,
     load_events,
@@ -57,6 +58,7 @@ _EVENT_COLOR = {
     SAFETY_BLOCK: "red",
     CLASSIFY: "red",
     FALLBACK: "magenta",
+    LIMIT: "red",
     "final": "bold",
 }
 
@@ -74,7 +76,7 @@ def _print_trace(trace_path: Path, color: bool) -> None:
         if e.classification:
             parts.append(_c(f"[{e.classification}]", "red", color))
         if e.outcome:
-            oc = {"ok": "green", "error": "red", "blocked": "red", "degraded": "yellow", "failed": "red"}.get(e.outcome, "reset")
+            oc = {"ok": "green", "error": "red", "blocked": "red", "degraded": "yellow", "failed": "red", "halted": "red"}.get(e.outcome, "reset")
             parts.append(_c(e.outcome, oc, color))
         if e.latency_ms is not None:
             parts.append(_c(f"{e.latency_ms:.0f}ms", "dim", color))
@@ -110,6 +112,10 @@ def cmd_demo(args: argparse.Namespace) -> int:
     status_color = {"ok": "green", "degraded": "yellow", "failed": "red"}[result.status]
     print(f"  status:          {_c(result.status.upper(), status_color, color)}")
     print(f"  steps ok/deg/fail: {result.steps_ok}/{result.steps_degraded}/{result.steps_failed}")
+    print(f"  spend:           ${result.cost_usd:.4f} of ${orch.limits.max_cost_usd:.2f} ceiling")
+    if result.halted:
+        print(f"  halted:          {_c(result.halt_reason or '', 'red', color)}")
+        print(f"  not attempted:   {result.steps_skipped} planned step(s)")
     if result.failure_classes:
         print(f"  classifications: {_c(', '.join(result.failure_classes), 'yellow', color)}")
     print(f"  answer:          {result.answer}")

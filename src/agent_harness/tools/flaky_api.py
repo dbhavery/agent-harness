@@ -10,16 +10,23 @@ Supported per-attempt behaviours:
     * ``"transient"`` -> raise a transient error (retryable)
     * ``"timeout"``   -> declare a latency larger than any sane deadline so the
                           executor's deadline check fires (classified timeout)
+    * ``"hang"``      -> declare a normal latency and then really block, like a
+                          socket with nobody on the other end. Nothing in the
+                          declared value gives this away: only the wall-clock
+                          watchdog stops it.
     * ``"malformed"`` -> return an off-contract dict (classified malformed_output)
 """
 
 from __future__ import annotations
+
+import threading
 
 from ..classification import TransientToolError
 from ..schemas import FlakyApiInput, FlakyApiOutput
 from .base import Tool
 
 _TIMEOUT_LATENCY_MS = 10_000.0  # 10s: guaranteed to blow any step deadline
+_HANG_SECONDS = 30.0            # long enough that only the watchdog ends it
 
 
 class FlakyApiTool(Tool[FlakyApiInput, FlakyApiOutput]):
@@ -41,6 +48,9 @@ class FlakyApiTool(Tool[FlakyApiInput, FlakyApiOutput]):
         self._script = script or ["transient", "transient", "ok"]
         # A secondary/cached data source the fallback path can degrade to.
         self._cache = cache or {}
+        # Never set. Waiting on it is how the "hang" behaviour blocks without
+        # burning CPU; the watchdog abandons the thread it blocks.
+        self._never_set = threading.Event()
 
     def _behavior(self, attempt: int) -> str:
         if not self._script:
@@ -67,6 +77,10 @@ class FlakyApiTool(Tool[FlakyApiInput, FlakyApiOutput]):
             # Should never actually reach here: the executor times out first.
             # Kept as a safety net so the contract is explicit.
             raise TransientToolError("unexpected: timeout attempt executed body")
+        if beh == "hang":
+            # A real block, with a declared latency of 20ms covering for it.
+            # The watchdog stops waiting at the deadline and abandons this call.
+            self._never_set.wait(_HANG_SECONDS)
         return FlakyApiOutput(
             resource=request.resource,
             payload=f"live-data::{request.resource}",

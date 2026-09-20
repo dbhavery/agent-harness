@@ -20,6 +20,7 @@ _EVENT_LABEL = {
     "safety_block": "BLOCKED",
     "classify": "CLASSIFY",
     "fallback": "FALLBACK",
+    "limit": "LIMIT",
     "final": "FINAL",
 }
 
@@ -30,6 +31,7 @@ _OUTCOME_COLORS = {
     "blocked": "#d29922",
     "degraded": "#d29922",
     "failed": "#f85149",
+    "halted": "#f85149",
 }
 _CLASS_COLORS = {
     "malformed_output": "#f85149",
@@ -38,6 +40,8 @@ _CLASS_COLORS = {
     "unsafe_action": "#ff7b72",
     "transient": "#58a6ff",
     "schema_violation": "#db61a2",
+    "cost_limit": "#ffa657",
+    "step_limit": "#ffa657",
 }
 
 
@@ -97,7 +101,9 @@ def render_html(events: list[TraceEvent]) -> str:
           <div>status {_badge(status, status_color)}</div>
           <div>ok {counts.get('steps_ok', 0)} &middot;
                degraded {counts.get('steps_degraded', 0)} &middot;
-               failed {counts.get('steps_failed', 0)}</div>
+               failed {counts.get('steps_failed', 0)} &middot;
+               not attempted {counts.get('steps_skipped', 0)}</div>
+          <div>spend ${float(counts.get('cost_usd', 0.0) or 0.0):.4f}</div>
           <div>{len(events)} trace events</div>
         </div>
         <div class="answer">{html.escape(final.detail if final else '')}</div>"""
@@ -143,6 +149,7 @@ def render_html(events: list[TraceEvent]) -> str:
   .ev-retry {{ background: #d2992210; }}
   .ev-safety_block, .ev-classify {{ background: #f8514910; }}
   .ev-fallback {{ background: #a371f710; }}
+  .ev-limit {{ background: #ffa65718; }}
   .ev-final {{ background: #3fb95010; }}
   .badge {{ display: inline-block; padding: .05rem .45rem; border-radius: 999px;
     font-size: .78rem; font-weight: 600; margin-right: .25rem; }}

@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .clock import Clock
+from .limits import RunLimits
 from .orchestrator import Orchestrator
 from .planner import ScriptedPlanner
 from .retry import RetryPolicy
@@ -21,7 +22,12 @@ from .tools.calculator import CalculatorTool
 from .tools.doc_search import DocSearchTool
 from .tools.flaky_api import FlakyApiTool
 
-SCENARIOS = ("flaky_recovery", "timeout_then_cache", "unsafe_blocked")
+SCENARIOS = (
+    "flaky_recovery",
+    "timeout_then_cache",
+    "real_hang_recovery",
+    "unsafe_blocked",
+)
 
 
 def build_harness(
@@ -33,6 +39,7 @@ def build_harness(
     """Construct the orchestrator + plan for a named scenario."""
     planner = ScriptedPlanner.from_fixtures()
     plan = planner.plan(scenario)
+    limits = RunLimits()
 
     if scenario == "flaky_recovery":
         flaky = FlakyApiTool(
@@ -45,6 +52,17 @@ def build_harness(
             script=["timeout"],
             cache={"order-8841": "stale-order-8841"},
         )
+    elif scenario == "real_hang_recovery":
+        # Attempt 0 really blocks (only the watchdog ends it), attempt 1 fails
+        # transiently, attempt 2 answers. The script restarts per step, so the
+        # second flaky step hangs again and its retries run the ledger out.
+        flaky = FlakyApiTool(
+            script=["hang", "transient", "ok"],
+            cache={"order-8841": "stale-order-8841"},
+        )
+        # A cent, which three attempts at $0.002 plus a search do not quite
+        # reach and five attempts pass.
+        limits = RunLimits(max_cost_usd=0.01)
     elif scenario == "unsafe_blocked":
         flaky = FlakyApiTool(script=["ok"])
     else:  # pragma: no cover - guarded by caller
@@ -56,6 +74,7 @@ def build_harness(
         clock=clock,
         safety=SafetyGate(),                 # nothing allow-listed: deletes blocked
         policy=RetryPolicy(max_attempts=3, base_ms=50.0, factor=2.0),
+        limits=limits,
         trace_dir=trace_dir,
         default_timeout_ms=500.0,
     )

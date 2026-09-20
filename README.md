@@ -2,11 +2,12 @@
 
 A small, inspectable agent workflow that demonstrates **surviving real operational
 edge cases** — the failure modes that break agentic systems in the field:
-flaky upstreams, hanging calls, malformed tool output, missing context, and
-unsafe actions. It is a **portfolio reliability harness**, not a production
-service and it makes no production claims. The point is to show the *machinery*:
-typed tool contracts, a deterministic orchestrator, structured traces, bounded
-retry with fallback, a real failure taxonomy, and a safety gate.
+flaky upstreams, hanging calls, malformed tool output, missing context, runaway
+loops, unbounded spend, and unsafe actions. It is a **portfolio reliability
+harness**, not a production service and it makes no production claims. The point
+is to show the *machinery*: typed tool contracts, a deterministic orchestrator,
+structured traces, bounded retry with fallback, a wall-clock watchdog on every
+call, run ceilings on cost and steps, a real failure taxonomy, and a safety gate.
 
 Everything runs **offline and deterministically** — no API keys, no network. A
 scripted, fixture-driven planner drives the loop so a run is byte-for-byte
@@ -14,20 +15,28 @@ reproducible (the injectable clock means tests assert exact timing). An optional
 real-LLM planner exists behind environment variables only.
 
 - Python 3.11+ · one runtime dependency (`pydantic`) · `pytest` for tests
-- 45 tests, all green · CI on 3.11 / 3.12 / 3.13
+- 59 tests, all green · CI on 3.11 / 3.12 / 3.13
 
 ---
 
 ## Start here (for reviewers)
 
-Three demos show the failure machinery, not a happy path:
+**Read one recorded failure first:
+[`trajectories/real-hang-recovery.md`](trajectories/real-hang-recovery.md).** It
+is a single run that goes wrong: a tool hangs for real and is cut off at its
+deadline, the step recovers on a later attempt, and the run then stops itself on
+its spend ceiling with part of its plan unexecuted. Nothing needs to be run to
+read it.
+
+Four demos show the failure machinery, not a happy path:
 
     pip install -e ".[dev]"
     python -m agent_harness demo flaky_recovery      # retries a flaky tool, classifies it transient, recovers
     python -m agent_harness demo timeout_then_cache  # bounded timeout -> classified -> cache fallback
+    python -m agent_harness demo real_hang_recovery  # a real hang cut off by the watchdog, then a cost-ceiling halt
     python -m agent_harness demo unsafe_blocked      # safety gate blocks an unsafe action
 
-Then read `tests/` (45 tests, one per operational edge case) and open the generated `reports/trace-report.html`.
+Then read `tests/` (59 tests, one per operational edge case) and open the generated `reports/trace-report.html`.
 
 ## Quick start (copy-paste)
 
@@ -44,6 +53,7 @@ python -m agent_harness demo flaky_recovery
 
 # other scenarios
 python -m agent_harness demo timeout_then_cache   # hangs -> timeout -> cache fallback
+python -m agent_harness demo real_hang_recovery   # real hang -> watchdog -> recovery -> cost ceiling halt
 python -m agent_harness demo unsafe_blocked        # destructive action -> blocked
 python -m agent_harness scenarios                  # list scenarios
 
@@ -98,21 +108,33 @@ No editable install? Everything also runs with `PYTHONPATH=src` (e.g.
   `doc_search` (in-memory corpus), `calc_units` (arithmetic + unit conversion,
   no `eval`), and `flaky_api` (a scripted, deliberately unreliable upstream).
 - **Orchestrator** (`orchestrator.py`). A deterministic plan → safety-gate →
-  execute → observe → respond loop. No wall-clock calls; all timing flows
-  through an injected `Clock` (`clock.py`).
+  execute → observe → respond loop. Timing flows through an injected `Clock`
+  (`clock.py`), so a scripted run is reproducible.
+- **Watchdog** (`watchdog.py`). Every call runs on a worker thread and the wait
+  stops at the step deadline. The deadline is checked against measured
+  wall-clock time, never against what the tool says its latency will be, so a
+  tool that under-reports or hangs outright is cut off and the call abandoned.
+  A tool's declared latency survives as trace metadata and decides nothing.
+- **Run ceilings** (`limits.py`). `RunLimits` caps what one run may spend
+  (`max_cost_usd`, default $1.00) and how many steps it may take
+  (`max_steps`, default 20). Both are on by default. Tools price themselves
+  through `Tool.cost_usd`; every attempt is charged, retries included, because
+  a metered endpoint bills for a call whether or not it answers. Hitting a
+  ceiling halts the run, with no fallback: `RunResult.halted`, `halt_reason`,
+  `steps_skipped` and `cost_usd` say what stopped and what was never attempted.
 - **Trace bus** (`trace.py`). Every step — plan, tool_call, tool_result, retry,
-  safety_block, classify, fallback, final — is one structured `TraceEvent`
+  safety_block, classify, fallback, limit, final — is one structured `TraceEvent`
   appended to `traces/<run_id>.jsonl`. The report and the tests both read it, so
   the trace is the single source of truth.
 - **Retry / fallback** (`retry.py`). Bounded retries with exponential,
   capped backoff — but **only for retryable classes** (transient, timeout).
   When retries are exhausted the orchestrator degrades to a secondary/cached
   source, or returns a safe refusal, and keeps the run alive.
-- **Failure classification** (`classification.py`). Six real categories keyed
+- **Failure classification** (`classification.py`). Eight real categories keyed
   off actual failure modes:
-  `malformed_output · missing_context · timeout · unsafe_action · transient · schema_violation`.
-  Retry and fallback decisions are driven by this taxonomy — it is control flow,
-  not a log label.
+  `malformed_output · missing_context · timeout · unsafe_action · transient · schema_violation · cost_limit · step_limit`.
+  Retry, fallback and halt decisions are driven by this taxonomy. It is control
+  flow, not a log label.
 - **Safety gate** (`safety.py`). Runs *before* execution. Blocks destructive
   actions on non-allow-listed resources and injection/traversal/code-exec
   patterns in arguments. Blocks are classified `unsafe_action` and never retried.
@@ -134,10 +156,16 @@ The `timeout_then_cache` scenario shows the harness **bound a hang and degrade**
 instead of stalling — note the deadline enforcement and the fallback:
 
 ```jsonl
-{"event":"retry","classification":"timeout","detail":"attempt 0 failed (declared latency 10000ms > budget 500ms); backing off 50ms",...}
-{"event":"classify","classification":"timeout","detail":"retries exhausted / non-retryable: declared latency 10000ms > budget 500ms",...}
+{"event":"retry","classification":"timeout","detail":"attempt 0 failed (measured 500ms >= budget 500ms (tool declared 10000ms)); backing off 50ms",...}
+{"event":"classify","classification":"timeout","detail":"retries exhausted / non-retryable: measured 500ms >= budget 500ms (tool declared 10000ms)",...}
 {"event":"fallback","classification":"timeout","outcome":"degraded","detail":"served stale cache for 'order-8841' after timeout",...}
 ```
+
+`real_hang_recovery` goes further: the tool declares a normal 20ms latency and
+then really blocks, so nothing it reports gives the hang away and only the
+watchdog ends the call. The run recovers on a later attempt and then halts on its
+spend ceiling. That whole run is written up, with its raw trace, in
+[`trajectories/real-hang-recovery.md`](trajectories/real-hang-recovery.md).
 
 See `screenshots/` for the raw terminal captures and a screenshot of the HTML
 trace report.
@@ -146,17 +174,25 @@ trace report.
 
 ## Tests — one per edge case
 
-`pytest -q` → **45 passed**. The resilience proofs (in `tests/`):
+`pytest -q` → **59 passed**. The resilience proofs (in `tests/`):
 
 | Edge case | Test | Proven behaviour |
 |---|---|---|
 | malformed output | `test_malformed_output_classified_and_not_infinite` | classified `malformed_output`, not retried, no crash |
 | missing context | `test_missing_context_handled_not_crashed` | classified `missing_context`, handled |
 | timeout (hang) | `test_timeout_is_bounded_and_degrades_to_cache` | bounded by deadline, classified `timeout`, cache fallback |
+| a tool that lies about its latency | `test_tool_that_underreports_its_latency_is_cut_off` | declared 10ms, slept 1.5s, cut off at the 500ms deadline |
+| a tool that hangs silently | `test_tool_that_hangs_and_reports_nothing_is_cut_off` | no declared latency at all, still bounded |
+| honest timing | `test_successful_call_is_traced_with_its_measured_duration` | the trace records measured time, not the tool's claim |
+| unbounded spend | `test_run_halts_when_the_cost_ceiling_is_reached` | run halts at the ceiling, `cost_limit`, rest of plan unexecuted |
+| retry spend | `test_retry_attempts_are_charged_against_the_ceiling` | every attempt is billed, so a retry storm hits the ceiling |
+| runaway loop | `test_forty_step_plan_halts_at_an_explicit_step_ceiling` | 40-step plan stops at 12, `step_limit` |
+| ceiling by default | `test_the_step_ceiling_is_on_by_default` | no configuration needed for the ceiling to fire |
 | unsafe action | `test_unsafe_action_blocked_by_gate` | blocked before execution, logged, `unsafe_action` |
 | recovery | `test_transient_failures_then_recover` | retries with backoff, then succeeds |
 | schema violation | `test_schema_violation_at_input` | rejected at the typed boundary |
 | safe degrade | `test_timeout_without_cache_is_safe_refusal` | no secondary source → safe refusal, run stays alive |
+| the published trajectory | `test_real_hang_scenario_is_cut_off_recovers_then_halts_on_cost` | the run written up in `trajectories/` still behaves that way |
 
 Plus unit tests for the retry policy, backoff math, classifier, safety patterns,
 trace persistence/determinism, and self-contained report rendering.
@@ -167,11 +203,22 @@ trace persistence/determinism, and self-contained report rendering.
 
 - **Not production.** This is a portfolio artifact demonstrating reliability
   patterns. There is no server, no persistence layer, no auth.
-- **The "flaky API" is simulated.** Its failures (transient, timeout, malformed)
-  are scripted per-attempt so the demo is deterministic. Timeouts are modelled
-  by a declared latency exceeding the step deadline rather than a real hanging
-  socket — the enforcement path (deadline check → classify → fallback) is real;
-  the slowness is injected. This is stated plainly so nothing is oversold.
+- **The "flaky API" is simulated.** Its failures (transient, timeout, hang,
+  malformed) are scripted per-attempt so the demo is repeatable. Two of them
+  model slowness two different ways: `timeout` declares a latency past the
+  deadline, and `hang` declares a normal latency and then really blocks on an
+  event nobody sets. The enforcement path is real in both cases, since the
+  watchdog measures wall-clock time and cannot tell a blocked event from a dead
+  socket, but the slowness itself is injected, not a real network fault.
+- **The tool prices are made up.** `doc_search` at $0.0002 a query and
+  `flaky_api` at $0.002 a call are placeholders. The per-attempt charging, the
+  ledger arithmetic and the halt are real.
+- **An audit of this repo on 2026-09-19 found the deadline was advisory**: the
+  executor compared a tool's self-reported latency against the budget and never
+  timed the call, so a tool declaring 10ms and sleeping 1.5s returned `ok`
+  against a 500ms deadline while all 45 tests passed. There was also no cost
+  ceiling and no step ceiling. All three are fixed, each with a test that fails
+  on the old code. The record is in the commits on `fix/audit-2026-09-19`.
 - **No LLM is required or called.** The shipped planner is fixture-driven. The
   `LLMPlanner` is an opt-in integration point gated behind `AGENT_HARNESS_LLM=1`.
 

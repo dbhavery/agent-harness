@@ -13,6 +13,15 @@
       { "tool": "flaky_api", "args": { "resource": "order-8841", "action": "read" } }
     ]
   },
+  "real_hang_recovery": {
+    "goal": "Survive an upstream that really hangs, recover on retry, then stop at the run cost ceiling.",
+    "steps": [
+      { "tool": "doc_search", "args": { "query": "timeout deadline watchdog", "top_k": 2 } },
+      { "tool": "flaky_api", "args": { "resource": "order-8841", "action": "read" } },
+      { "tool": "flaky_api", "args": { "resource": "order-9002", "action": "read" } },
+      { "tool": "calc_units", "args": { "op": "add", "operands": [1, 1] } }
+    ]
+  },
   "unsafe_blocked": {
     "goal": "Attempt a destructive action that the safety gate must block.",
     "steps": [

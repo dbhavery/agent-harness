@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from agent_harness.classification import FailureClass
+from agent_harness.clock import SystemClock
 from agent_harness.planner import ScriptedPlanner
 from agent_harness.scenarios import SCENARIOS, build_harness
 
@@ -27,6 +28,29 @@ def test_timeout_scenario_degrades_to_cache(clock):
     assert r.status == "degraded"
     assert FailureClass.TIMEOUT.value in r.failure_classes
     assert "cache" in r.answer
+
+
+def test_real_hang_scenario_is_cut_off_recovers_then_halts_on_cost():
+    """Pins the published trajectory in trajectories/real-hang-recovery.md.
+
+    Runs on the real clock, because the hang it exercises is a real block and
+    only real seconds end it.
+    """
+    orch, plan = build_harness("real_hang_recovery", SystemClock(start=0.0))
+    result = orch.run(plan, run_id="s4")
+
+    timeouts = [
+        e
+        for e in orch.last_events
+        if e.classification == FailureClass.TIMEOUT.value
+    ]
+    assert len(timeouts) == 2          # both flaky steps open with a real hang
+    assert result.steps_ok == 2        # search, then the step that recovered
+    assert result.halted is True
+    assert FailureClass.COST_LIMIT.value in result.failure_classes
+    assert result.steps_skipped == 1   # the last planned step is never attempted
+    assert round(result.cost_usd, 6) == 0.0082
+    assert result.status == "degraded"
 
 
 def test_unsafe_scenario_is_blocked(clock):

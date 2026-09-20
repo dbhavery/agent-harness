@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent harness trace — demo-real_hang_recovery</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem;
+    background: #0d1117; color: #c9d1d9;
+    font: 14px/1.5 ui-monospace, SFMono-Regular, "Cascadia Code", Consolas, monospace;
+  }
+  h1 { font-size: 1.15rem; margin: 0 0 .25rem; color: #e6edf3; }
+  .sub { color: #8b949e; margin: 0 0 1.5rem; }
+  .summary { display: flex; gap: 1.5rem; flex-wrap: wrap;
+    padding: 1rem; background: #161b22; border: 1px solid #30363d;
+    border-radius: 10px; margin-bottom: 1rem; }
+  .answer { padding: .75rem 1rem; background: #161b22;
+    border-left: 3px solid #3fb950; border-radius: 6px; margin-bottom: 1.5rem;
+    color: #e6edf3; }
+  code { color: #58a6ff; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; color: #8b949e; font-weight: 600;
+    border-bottom: 1px solid #30363d; padding: .5rem; position: sticky; top: 0;
+    background: #0d1117; }
+  td { padding: .5rem; border-bottom: 1px solid #21262d; vertical-align: top; }
+  .col-t { color: #8b949e; white-space: nowrap; }
+  .col-step { color: #8b949e; white-space: nowrap; }
+  .evlabel { font-weight: 700; color: #e6edf3; }
+  .ev-retry { background: #d2992210; }
+  .ev-safety_block, .ev-classify { background: #f8514910; }
+  .ev-fallback { background: #a371f710; }
+  .ev-limit { background: #ffa65718; }
+  .ev-final { background: #3fb95010; }
+  .badge { display: inline-block; padding: .05rem .45rem; border-radius: 999px;
+    font-size: .78rem; font-weight: 600; margin-right: .25rem; }
+  .lat { color: #8b949e; font-size: .8rem; }
+  .col-tool { color: #79c0ff; }
+  .args { color: #8b949e; font-size: .82rem; margin-top: .15rem; }
+  .col-detail { max-width: 46ch; }
+</style></head>
+<body>
+  <h1>Agent orchestration reliability harness — trace report</h1>
+  <p class="sub">Deterministic, offline. Rendered from JSONL; no external assets.</p>
+  
+        <div class="summary">
+          <div>run <code>demo-real_hang_recovery</code></div>
+          <div>status <span class="badge" style="background:#d2992222;color:#d29922;border:1px solid #d2992255">degraded</span></div>
+          <div>ok 2 &middot;
+               degraded 0 &middot;
+               failed 1 &middot;
+               not attempted 1</div>
+          <div>spend $0.0082</div>
+          <div>12 trace events</div>
+        </div>
+        <div class="answer">doc_search: top hit &#x27;Timeout handling&#x27; (score 0.6667) | flaky_api: order-8841 -&gt; live-data::order-8841 [live] | run halted at cost_limit: spent $0.0082 over 5 charge(s); next call costs $0.0020; ceiling $0.01 | 1 planned step(s) not attempted</div>
+  
+        <table>
+          <thead><tr>
+            <th>t</th><th>step</th><th>event</th><th>tool</th>
+            <th>outcome / class</th><th>detail</th>
+          </tr></thead>
+          <tbody>
+      <tr class="ev ev-plan">
+        <td class="col-t">+0.000s</td>
+        <td class="col-step">0</td>
+        <td class="col-ev"><span class="evlabel">PLAN</span></td>
+        <td class="col-tool"></td>
+        <td class="col-badges">  <span class="lat"></span></td>
+        <td class="col-detail">goal=&#x27;Survive an upstream that really hangs, recover on retry, then stop at the run cost ceiling.&#x27;; 4 step(s)<div class="args">max_cost_usd=0.01, max_steps=20, steps=[&#x27;doc_search&#x27;, &#x27;flaky_api&#x27;, &#x27;flaky_api&#x27;, &#x27;calc_units&#x27;]</div></td>
+      </tr>
+
+      <tr class="ev ev-tool_call">
+        <td class="col-t">+0.000s</td>
+        <td class="col-step">1</td>
+        <td class="col-ev"><span class="evlabel">CALL</span></td>
+        <td class="col-tool">doc_search</td>
+        <td class="col-badges">  <span class="lat"></span></td>
+        <td class="col-detail">deadline=500ms<div class="args">query=timeout deadline watchdog, top_k=2</div></td>
+      </tr>
+
+      <tr class="ev ev-tool_result">
+        <td class="col-t">+0.010s</td>
+        <td class="col-step">1</td>
+        <td class="col-ev"><span class="evlabel">RESULT</span></td>
+        <td class="col-tool">doc_search</td>
+        <td class="col-badges"><span class="badge" style="background:#3fb95022;color:#3fb950;border:1px solid #3fb95055">ok</span>  <span class="lat">10ms</span></td>
+        <td class="col-detail">doc_search: top hit &#x27;Timeout handling&#x27; (score 0.6667) [measured 10ms, declared 8ms]<div class="args">declared_ms=8.0</div></td>
+      </tr>
+
+      <tr class="ev ev-tool_call">
+        <td class="col-t">+0.010s</td>
+        <td class="col-step">2</td>
+        <td class="col-ev"><span class="evlabel">CALL</span></td>
+        <td class="col-tool">flaky_api</td>
+        <td class="col-badges">  <span class="lat"></span></td>
+        <td class="col-detail">deadline=500ms<div class="args">action=read, resource=order-8841</div></td>
+      </tr>
+
+      <tr class="ev ev-retry">
+        <td class="col-t">+0.520s</td>
+        <td class="col-step">2 #0</td>
+        <td class="col-ev"><span class="evlabel">RETRY</span></td>
+        <td class="col-tool">flaky_api</td>
+        <td class="col-badges"><span class="badge" style="background:#f8514922;color:#f85149;border:1px solid #f8514955">error</span> <span class="badge" style="background:#d2992222;color:#d29922;border:1px solid #d2992255">timeout</span> <span class="lat">50ms</span></td>
+        <td class="col-detail">attempt 0 failed (measured 500ms with the call still running; watchdog abandoned it); backing off 50ms</td>
+      </tr>
+
+      <tr class="ev ev-retry">
+        <td class="col-t">+0.591s</td>
+        <td class="col-step">2 #1</td>
+        <td class="col-ev"><span class="evlabel">RETRY</span></td>
+        <td class="col-tool">flaky_api</td>
+        <td class="col-badges"><span class="badge" style="background:#f8514922;color:#f85149;border:1px solid #f8514955">error</span> <span class="badge" style="background:#58a6ff22;color:#58a6ff;border:1px solid #58a6ff55">transient</span> <span class="lat">100ms</span></td>
+        <td class="col-detail">attempt 1 failed (temporary upstream failure); backing off 100ms</td>
+      </tr>
+
+      <tr class="ev ev-tool_result">
+        <td class="col-t">+0.712s</td>
+        <td class="col-step">2</td>
+        <td class="col-ev"><span class="evlabel">RESULT</span></td>
+        <td class="col-tool">flaky_api</td>
+        <td class="col-badges"><span class="badge" style="background:#3fb95022;color:#3fb950;border:1px solid #3fb95055">ok</span>  <span class="lat">20ms</span></td>
+        <td class="col-detail">flaky_api: order-8841 -&gt; live-data::order-8841 [live] [measured 20ms, declared 20ms]<div class="args">declared_ms=20.0</div></td>
+      </tr>
+
+      <tr class="ev ev-tool_call">
+        <td class="col-t">+0.712s</td>
+        <td class="col-step">3</td>
+        <td class="col-ev"><span class="evlabel">CALL</span></td>
+        <td class="col-tool">flaky_api</td>
+        <td class="col-badges">  <span class="lat"></span></td>
+        <td class="col-detail">deadline=500ms<div class="args">action=read, resource=order-9002</div></td>
+      </tr>
+
+      <tr class="ev ev-retry">
+        <td class="col-t">+1.227s</td>
+        <td class="col-step">3 #0</td>
+        <td class="col-ev"><span class="evlabel">RETRY</span></td>
+        <td class="col-tool">flaky_api</td>
+        <td class="col-badges"><span class="badge" style="background:#f8514922;color:#f85149;border:1px solid #f8514955">error</span> <span class="badge" style="background:#d2992222;color:#d29922;border:1px solid #d2992255">timeout</span> <span class="lat">50ms</span></td>
+        <td class="col-detail">attempt 0 failed (measured 500ms with the call still running; watchdog abandoned it); backing off 50ms</td>
+      </tr>
+
+      <tr class="ev ev-classify">
+        <td class="col-t">+1.278s</td>
+        <td class="col-step">3</td>
+        <td class="col-ev"><span class="evlabel">CLASSIFY</span></td>
+        <td class="col-tool">flaky_api</td>
+        <td class="col-badges"><span class="badge" style="background:#f8514922;color:#f85149;border:1px solid #f8514955">error</span> <span class="badge" style="background:#ffa65722;color:#ffa657;border:1px solid #ffa65755">cost_limit</span> <span class="lat"></span></td>
+        <td class="col-detail">retries exhausted / non-retryable: spent $0.0082 over 5 charge(s); next call costs $0.0020; ceiling $0.01</td>
+      </tr>
+
+      <tr class="ev ev-limit">
+        <td class="col-t">+1.278s</td>
+        <td class="col-step">3</td>
+        <td class="col-ev"><span class="evlabel">LIMIT</span></td>
+        <td class="col-tool">flaky_api</td>
+        <td class="col-badges"><span class="badge" style="background:#f8514922;color:#f85149;border:1px solid #f8514955">halted</span> <span class="badge" style="background:#ffa65722;color:#ffa657;border:1px solid #ffa65755">cost_limit</span> <span class="lat"></span></td>
+        <td class="col-detail">run halted: spent $0.0082 over 5 charge(s); next call costs $0.0020; ceiling $0.01</td>
+      </tr>
+
+      <tr class="ev ev-final">
+        <td class="col-t">+1.278s</td>
+        <td class="col-step">4</td>
+        <td class="col-ev"><span class="evlabel">FINAL</span></td>
+        <td class="col-tool"></td>
+        <td class="col-badges"><span class="badge" style="background:#d2992222;color:#d29922;border:1px solid #d2992255">degraded</span>  <span class="lat"></span></td>
+        <td class="col-detail">doc_search: top hit &#x27;Timeout handling&#x27; (score 0.6667) | flaky_api: order-8841 -&gt; live-data::order-8841 [live] | run halted at cost_limit: spent $0.0082 over 5 charge(s); next call costs $0.0020; ceiling $0.01 | 1 planned step(s) not attempted<div class="args">cost_usd=0.0082, steps_degraded=0, steps_failed=1, steps_ok=2, steps_skipped=1</div></td>
+      </tr></tbody>
+        </table>
+</body></html>
