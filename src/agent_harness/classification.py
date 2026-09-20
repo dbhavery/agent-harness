@@ -12,7 +12,7 @@ from enum import Enum
 
 
 class FailureClass(str, Enum):
-    """The six operational failure categories the harness distinguishes."""
+    """The operational failure categories the harness distinguishes."""
 
     MALFORMED_OUTPUT = "malformed_output"   # tool returned unparseable / off-contract data
     MISSING_CONTEXT = "missing_context"     # tool invoked without the data it needs
@@ -20,6 +20,7 @@ class FailureClass(str, Enum):
     UNSAFE_ACTION = "unsafe_action"         # safety gate blocked the call
     TRANSIENT = "transient"                 # temporary fault, worth retrying
     SCHEMA_VIOLATION = "schema_violation"   # input failed contract validation
+    COST_LIMIT = "cost_limit"               # run reached its spend ceiling
 
 
 # Which classes are worth retrying. Retrying a schema violation or an unsafe
@@ -72,6 +73,18 @@ class UnsafeAction(HarnessError):
 
 class TransientToolError(HarnessError):
     failure_class = FailureClass.TRANSIENT
+
+
+class CostLimitExceeded(HarnessError):
+    """The next charge would take the run past its spend ceiling."""
+
+    failure_class = FailureClass.COST_LIMIT
+
+
+#: Failure classes that end the whole run rather than just the current step.
+#: A ceiling is not a per-step fault: falling back to a cached answer and then
+#: carrying on to the next paid step would defeat the point of having one.
+HALTING: frozenset[FailureClass] = frozenset({FailureClass.COST_LIMIT})
 
 
 def classify(exc: BaseException) -> FailureClass:

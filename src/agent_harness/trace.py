@@ -32,6 +32,7 @@ RETRY = "retry"
 SAFETY_BLOCK = "safety_block"
 CLASSIFY = "classify"
 FALLBACK = "fallback"
+LIMIT = "limit"        # a run-level ceiling (cost, steps) stopped the run
 FINAL = "final"
 
 

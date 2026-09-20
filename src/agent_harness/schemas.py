@@ -120,3 +120,10 @@ class RunResult(BaseModel):
     steps_failed: int
     failure_classes: list[str] = Field(default_factory=list)
     trace_path: str | None = None
+    #: True when a run-level ceiling (cost, steps) stopped the run early.
+    halted: bool = False
+    halt_reason: str | None = None
+    #: Planned steps never attempted because the run halted.
+    steps_skipped: int = 0
+    #: What the run actually spent, summed over every attempt including retries.
+    cost_usd: float = 0.0

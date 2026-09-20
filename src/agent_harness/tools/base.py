@@ -27,10 +27,16 @@ class Tool(ABC, Generic[TIn, TOut]):
     input_model: type[BaseModel]
     output_model: type[BaseModel]
 
-    #: Declared, simulated execution latency in milliseconds. The executor uses
-    #: this to advance the injected clock and to detect deadline overruns
-    #: deterministically. Real tools would measure actual wall-time instead.
+    #: Declared, simulated execution latency in milliseconds. The executor
+    #: advances the injected clock by this so a demo run is deterministic. It is
+    #: metadata only: the deadline is enforced against measured wall-clock time
+    #: by :mod:`agent_harness.watchdog`, never against this number.
     latency_ms: float = 5.0
+
+    #: Price of one call in US dollars. Charged per attempt, retries included,
+    #: against the run's cost ceiling (:mod:`agent_harness.limits`). Zero means
+    #: free: local tools cost nothing, metered endpoints override it.
+    cost_usd: float = 0.0
 
     @abstractmethod
     def run(self, request: TIn, attempt: int = 0) -> TOut | dict[str, Any]:
@@ -53,6 +59,16 @@ class Tool(ABC, Generic[TIn, TOut]):
         to model a call whose latency varies (e.g. a hang on one attempt).
         """
         return self.latency_ms
+
+    def cost_of(self, request: TIn, attempt: int = 0) -> float:
+        """Price of this specific call, in US dollars.
+
+        Override to model a tool whose price depends on the request (tokens in a
+        prompt, rows in a query). The executor charges the returned amount before
+        the call runs, because a metered endpoint bills for a request that times
+        out just as it bills for one that answers.
+        """
+        return self.cost_usd
 
     def validate_input(self, raw: dict[str, Any]) -> TIn:
         try:

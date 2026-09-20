@@ -27,6 +27,8 @@ class CalculatorTool(Tool[CalcInput, CalcOutput]):
     input_model = CalcInput
     output_model = CalcOutput
     latency_ms = 3.0
+    # Local arithmetic. Nothing to bill.
+    cost_usd = 0.0
 
     def run(self, request: CalcInput, attempt: int = 0) -> CalcOutput:
         if request.op == "convert":

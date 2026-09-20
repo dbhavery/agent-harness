@@ -41,6 +41,9 @@ class DocSearchTool(Tool[DocSearchInput, DocSearchOutput]):
     input_model = DocSearchInput
     output_model = DocSearchOutput
     latency_ms = 8.0
+    # A hosted search index bills per query. Priced so the run ledger in the
+    # trace is not all zeroes.
+    cost_usd = 0.0002
 
     def __init__(self, corpus: list[dict[str, str]] | None = None) -> None:
         # Passing an empty corpus lets us exercise the missing-context path.

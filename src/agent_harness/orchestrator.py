@@ -25,12 +25,15 @@ from typing import Any
 
 from . import trace as tr
 from .classification import (
+    HALTING,
+    CostLimitExceeded,
     FailureClass,
     HarnessError,
     ToolTimeout,
     classify,
 )
 from .clock import Clock, SystemClock
+from .limits import CostLedger, RunLimits
 from .retry import AttemptRecord, RetryPolicy, run_with_retry
 from .safety import SafetyGate
 from .schemas import Plan, RunResult, ToolStep
@@ -46,6 +49,8 @@ class StepOutcome:
     summary: str
     latency_ms: float | None = None
     failure_class: FailureClass | None = None
+    #: Set when this step tripped a run-level ceiling, which ends the run.
+    halt_reason: str | None = None
 
 
 @dataclass(slots=True)
@@ -67,6 +72,7 @@ def _execute_once(
     deadline_ms: float | None,
     clock: Clock,
     attempt: int,
+    ledger: CostLedger,
 ) -> tuple[Any, Measured]:
     """One validated attempt, bounded by a wall-clock watchdog.
 
@@ -84,6 +90,21 @@ def _execute_once(
     fault. Returns ``(validated_output, Measured)`` on success.
     """
     request = tool.validate_input(raw_args)          # -> SchemaViolation
+
+    # Pay before the call. A metered endpoint bills for a request that times out
+    # just as it bills for one that answers, and every retry is another request.
+    price = tool.cost_of(request, attempt)
+    if ledger.would_exceed(price):
+        raise CostLimitExceeded(
+            f"{tool.name} would take the run past its ${ledger.max_cost_usd:.2f} "
+            "cost ceiling",
+            detail=(
+                f"spent ${ledger.spent_usd:.4f} over {ledger.charges} charge(s); "
+                f"next call costs ${price:.4f}; ceiling ${ledger.max_cost_usd:.2f}"
+            ),
+        )
+    ledger.charge(tool.name, price)
+
     declared_ms = tool.next_latency_ms(request, attempt)
 
     started = clock.now()
@@ -124,6 +145,7 @@ class Orchestrator:
         clock: Clock | None = None,
         safety: SafetyGate | None = None,
         policy: RetryPolicy | None = None,
+        limits: RunLimits | None = None,
         trace_dir: Path | str | None = None,
         default_timeout_ms: float = 500.0,
     ) -> None:
@@ -133,6 +155,9 @@ class Orchestrator:
         self.clock = clock or SystemClock()
         self.safety = safety or SafetyGate()
         self.policy = policy or RetryPolicy()
+        # Ceilings are on by default: a spend limit nobody remembers to set is
+        # not a spend limit.
+        self.limits = limits or RunLimits()
         self.trace_dir = trace_dir
         self.default_timeout_ms = default_timeout_ms
 
@@ -143,22 +168,40 @@ class Orchestrator:
         step_id = 0
         outcomes: list[StepOutcome] = []
         failure_classes: list[str] = []
+        ledger = CostLedger(max_cost_usd=self.limits.max_cost_usd)
+        halt_reason: str | None = None
 
         bus.emit(
             tr.PLAN,
             step_id=step_id,
             detail=f"goal={plan.goal!r}; {len(plan.steps)} step(s)",
-            args={"steps": [s.tool for s in plan.steps]},
+            args={
+                "steps": [s.tool for s in plan.steps],
+                "max_cost_usd": self.limits.max_cost_usd,
+            },
         )
 
         for step in plan.steps:
             step_id += 1
-            outcome = self._run_step(bus, step_id, step)
+            outcome = self._run_step(bus, step_id, step, ledger)
             outcomes.append(outcome)
             if outcome.failure_class is not None:
                 failure_classes.append(outcome.failure_class.value)
+            if outcome.halt_reason is not None:
+                halt_reason = outcome.halt_reason
+                break
 
-        result = self._finalize(run_id, plan, outcomes, failure_classes, bus)
+        skipped = len(plan.steps) - len(outcomes)
+        result = self._finalize(
+            run_id,
+            plan,
+            outcomes,
+            failure_classes,
+            bus,
+            halt_reason=halt_reason,
+            steps_skipped=skipped,
+            cost_usd=ledger.spent_usd,
+        )
         bus.emit(
             tr.FINAL,
             step_id=step_id + 1,
@@ -168,6 +211,8 @@ class Orchestrator:
                 "steps_ok": result.steps_ok,
                 "steps_degraded": result.steps_degraded,
                 "steps_failed": result.steps_failed,
+                "steps_skipped": result.steps_skipped,
+                "cost_usd": result.cost_usd,
             },
         )
         bus.close()
@@ -177,7 +222,13 @@ class Orchestrator:
         return result
 
     # ------------------------------------------------------------------ #
-    def _run_step(self, bus: tr.TraceBus, step_id: int, step: ToolStep) -> StepOutcome:
+    def _run_step(
+        self,
+        bus: tr.TraceBus,
+        step_id: int,
+        step: ToolStep,
+        ledger: CostLedger,
+    ) -> StepOutcome:
         tool = self.tools.get(step.tool)
         if tool is None:
             bus.emit(
@@ -241,7 +292,7 @@ class Orchestrator:
         try:
             (output, measured), _records = run_with_retry(
                 lambda attempt: _execute_once(
-                    tool, step.args, deadline, self.clock, attempt
+                    tool, step.args, deadline, self.clock, attempt, ledger
                 ),
                 self.policy,
                 self.clock,
@@ -261,6 +312,8 @@ class Orchestrator:
                 classification=fc.value,
                 detail=f"retries exhausted / non-retryable: {detail}",
             )
+            if fc in HALTING:
+                return self._halt(bus, step_id, tool.name, fc, detail)
             return self._fallback(bus, step_id, tool, step, fc)
 
         # 3) Success.
@@ -280,6 +333,37 @@ class Orchestrator:
             status="ok",
             summary=summary,
             latency_ms=measured.elapsed_ms,
+        )
+
+    # ------------------------------------------------------------------ #
+    def _halt(
+        self,
+        bus: tr.TraceBus,
+        step_id: int,
+        tool_name: str | None,
+        fc: FailureClass,
+        detail: str,
+    ) -> StepOutcome:
+        """Stop the run on a ceiling breach, with no fallback path.
+
+        A ceiling is not a per-step fault. Serving a cached answer here and then
+        carrying on to the next paid step is exactly what the ceiling exists to
+        prevent, so this path deliberately has no degrade.
+        """
+        bus.emit(
+            tr.LIMIT,
+            step_id=step_id,
+            tool=tool_name,
+            outcome="halted",
+            classification=fc.value,
+            detail=f"run halted: {detail}",
+        )
+        return StepOutcome(
+            tool=tool_name or "(run)",
+            status="failed",
+            summary=f"run halted at {fc.value}: {detail}",
+            failure_class=fc,
+            halt_reason=f"{fc.value}: {detail}",
         )
 
     # ------------------------------------------------------------------ #
@@ -337,6 +421,10 @@ class Orchestrator:
         outcomes: list[StepOutcome],
         failure_classes: list[str],
         bus: tr.TraceBus,
+        *,
+        halt_reason: str | None = None,
+        steps_skipped: int = 0,
+        cost_usd: float = 0.0,
     ) -> RunResult:
         ok = sum(1 for o in outcomes if o.status == "ok")
         degraded = sum(1 for o in outcomes if o.status == "degraded")
@@ -351,6 +439,8 @@ class Orchestrator:
 
         answer_bits = [o.summary for o in outcomes]
         answer = " | ".join(answer_bits) if answer_bits else "(no steps)"
+        if halt_reason is not None and steps_skipped:
+            answer += f" | {steps_skipped} planned step(s) not attempted"
 
         return RunResult(
             run_id=run_id,
@@ -362,6 +452,10 @@ class Orchestrator:
             steps_failed=failed,
             failure_classes=sorted(set(failure_classes)),
             trace_path=str(bus.path) if bus.path else None,
+            halted=halt_reason is not None,
+            halt_reason=halt_reason,
+            steps_skipped=steps_skipped,
+            cost_usd=cost_usd,
         )
 
 

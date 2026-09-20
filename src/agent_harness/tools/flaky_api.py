@@ -27,6 +27,9 @@ class FlakyApiTool(Tool[FlakyApiInput, FlakyApiOutput]):
     input_model = FlakyApiInput
     output_model = FlakyApiOutput
     latency_ms = 20.0
+    # A metered upstream: every attempt is billed, so a retry storm on this tool
+    # is what the run cost ceiling exists to stop.
+    cost_usd = 0.002
 
     def __init__(
         self,
