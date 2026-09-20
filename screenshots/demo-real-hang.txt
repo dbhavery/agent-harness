@@ -1,0 +1,30 @@
+========================================================================
+ agent-harness demo :: scenario 'real_hang_recovery'
+ goal: Survive an upstream that really hangs, recover on retry, then stop at the run cost ceiling.
+========================================================================
+
+
+--- trace --------------------------------------------------------------
++ 0.000s  step 0  PLAN          goal='Survive an upstream that really hangs, recover on retry, then stop at the run cost ceiling.'; 4 step(s)
++ 0.000s  step 1  TOOL_CALL     doc_search  deadline=500ms
++ 0.010s  step 1  TOOL_RESULT   doc_search  ok  10ms  doc_search: top hit 'Timeout handling' (score 0.6667) [measured 10ms, declared 8ms]
++ 0.011s  step 2  TOOL_CALL     flaky_api   deadline=500ms
++ 0.517s  step 2  RETRY         flaky_api   [timeout]  error  50ms  attempt 0 failed (measured 500ms with the call still running; watchdog abandoned it); backing off 50ms
++ 0.589s  step 2  RETRY         flaky_api   [transient]  error  100ms  attempt 1 failed (temporary upstream failure); backing off 100ms
++ 0.712s  step 2  TOOL_RESULT   flaky_api   ok  21ms  flaky_api: order-8841 -> live-data::order-8841 [live] [measured 21ms, declared 20ms]
++ 0.712s  step 3  TOOL_CALL     flaky_api   deadline=500ms
++ 1.218s  step 3  RETRY         flaky_api   [timeout]  error  50ms  attempt 0 failed (measured 500ms with the call still running; watchdog abandoned it); backing off 50ms
++ 1.269s  step 3  CLASSIFY      flaky_api   [cost_limit]  error  retries exhausted / non-retryable: spent $0.0082 over 5 charge(s); next call costs $0.0020; ceiling $0.01
++ 1.269s  step 3  LIMIT         flaky_api   [cost_limit]  halted  run halted: spent $0.0082 over 5 charge(s); next call costs $0.0020; ceiling $0.01
++ 1.269s  step 4  FINAL         degraded  doc_search: top hit 'Timeout handling' (score 0.6667) | flaky_api: order-8841 -> live-data::order-8841 [live] | run halted at cost_limit: spent $0.0082 over 5 charge(s); next call costs $0.0020; ceiling $0.01 | 1 planned step(s) not attempted
+------------------------------------------------------------------------
+
+  status:          DEGRADED
+  steps ok/deg/fail: 2/0/1
+  spend:           $0.0082 of $0.01 ceiling
+  halted:          cost_limit: spent $0.0082 over 5 charge(s); next call costs $0.0020; ceiling $0.01
+  not attempted:   1 planned step(s)
+  classifications: cost_limit
+  answer:          doc_search: top hit 'Timeout handling' (score 0.6667) | flaky_api: order-8841 -> live-data::order-8841 [live] | run halted at cost_limit: spent $0.0082 over 5 charge(s); next call costs $0.0020; ceiling $0.01 | 1 planned step(s) not attempted
+  trace:           C:\Users\dev\Projects\agent-harness\traces\demo-real_hang_recovery.jsonl
+  report:          C:\Users\dev\Projects\agent-harness\reports\trace-report.html

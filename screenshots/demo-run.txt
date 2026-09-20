@@ -7,18 +7,19 @@
 --- trace --------------------------------------------------------------
 + 0.000s  step 0  PLAN          goal='Answer an ops question, then fetch a flaky upstream record that recovers on retry.'; 3 step(s)
 + 0.000s  step 1  TOOL_CALL     doc_search  deadline=500ms
-+ 0.009s  step 1  TOOL_RESULT   doc_search  ok  8ms  doc_search: top hit 'Retry & backoff runbook' (score 0.6667)
-+ 0.009s  step 2  TOOL_CALL     calc_units  deadline=500ms
-+ 0.012s  step 2  TOOL_RESULT   calc_units  ok  3ms  calc_units: = 42.164813 km
-+ 0.012s  step 3  TOOL_CALL     flaky_api   deadline=500ms
-+ 0.033s  step 3  RETRY         flaky_api   [transient]  error  50ms  attempt 0 failed (temporary upstream failure); backing off 50ms
-+ 0.103s  step 3  RETRY         flaky_api   [transient]  error  100ms  attempt 1 failed (temporary upstream failure); backing off 100ms
-+ 0.224s  step 3  TOOL_RESULT   flaky_api   ok  20ms  flaky_api: order-8841 -> live-data::order-8841 [live]
-+ 0.224s  step 4  FINAL         ok  doc_search: top hit 'Retry & backoff runbook' (score 0.6667) | calc_units: = 42.164813 km | flaky_api: order-8841 -> live-data::order-8841 [live]
++ 0.010s  step 1  TOOL_RESULT   doc_search  ok  9ms  doc_search: top hit 'Retry & backoff runbook' (score 0.6667) [measured 9ms, declared 8ms]
++ 0.010s  step 2  TOOL_CALL     calc_units  deadline=500ms
++ 0.013s  step 2  TOOL_RESULT   calc_units  ok  3ms  calc_units: = 42.164813 km [measured 3ms, declared 3ms]
++ 0.014s  step 3  TOOL_CALL     flaky_api   deadline=500ms
++ 0.034s  step 3  RETRY         flaky_api   [transient]  error  50ms  attempt 0 failed (temporary upstream failure); backing off 50ms
++ 0.106s  step 3  RETRY         flaky_api   [transient]  error  100ms  attempt 1 failed (temporary upstream failure); backing off 100ms
++ 0.228s  step 3  TOOL_RESULT   flaky_api   ok  21ms  flaky_api: order-8841 -> live-data::order-8841 [live] [measured 21ms, declared 20ms]
++ 0.228s  step 4  FINAL         ok  doc_search: top hit 'Retry & backoff runbook' (score 0.6667) | calc_units: = 42.164813 km | flaky_api: order-8841 -> live-data::order-8841 [live]
 ------------------------------------------------------------------------
 
   status:          OK
   steps ok/deg/fail: 3/0/0
+  spend:           $0.0062 of $1.00 ceiling
   answer:          doc_search: top hit 'Retry & backoff runbook' (score 0.6667) | calc_units: = 42.164813 km | flaky_api: order-8841 -> live-data::order-8841 [live]
   trace:           C:\Users\dev\Projects\agent-harness\traces\demo-flaky_recovery.jsonl
   report:          C:\Users\dev\Projects\agent-harness\reports\trace-report.html

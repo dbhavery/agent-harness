@@ -32,6 +32,7 @@ jobs:
         run: |
           python -m agent_harness demo flaky_recovery --no-color
           python -m agent_harness demo timeout_then_cache --no-color
+          python -m agent_harness demo real_hang_recovery --no-color
           python -m agent_harness demo unsafe_blocked --no-color
 
       - name: Render trace report

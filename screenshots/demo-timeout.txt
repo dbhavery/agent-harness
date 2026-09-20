@@ -7,15 +7,16 @@
 --- trace --------------------------------------------------------------
 + 0.000s  step 0  PLAN          goal='Hit an upstream that hangs; bound it with a deadline and degrade to cache.'; 1 step(s)
 + 0.000s  step 1  TOOL_CALL     flaky_api   deadline=500ms
-+ 0.501s  step 1  RETRY         flaky_api   [timeout]  error  50ms  attempt 0 failed (declared latency 10000ms > budget 500ms); backing off 50ms
-+ 1.052s  step 1  RETRY         flaky_api   [timeout]  error  100ms  attempt 1 failed (declared latency 10000ms > budget 500ms); backing off 100ms
-+ 1.653s  step 1  CLASSIFY      flaky_api   [timeout]  error  retries exhausted / non-retryable: declared latency 10000ms > budget 500ms
-+ 1.653s  step 1  FALLBACK      flaky_api   [timeout]  degraded  served stale cache for 'order-8841' after timeout
-+ 1.653s  step 2  FINAL         degraded  flaky_api: order-8841 -> stale-order-8841 [cache] (from cache)
++ 0.501s  step 1  RETRY         flaky_api   [timeout]  error  50ms  attempt 0 failed (measured 500ms >= budget 500ms (tool declared 10000ms)); backing off 50ms
++ 1.051s  step 1  RETRY         flaky_api   [timeout]  error  100ms  attempt 1 failed (measured 500ms >= budget 500ms (tool declared 10000ms)); backing off 100ms
++ 1.652s  step 1  CLASSIFY      flaky_api   [timeout]  error  500ms  retries exhausted / non-retryable: measured 500ms >= budget 500ms (tool declared 10000ms)
++ 1.652s  step 1  FALLBACK      flaky_api   [timeout]  degraded  served stale cache for 'order-8841' after timeout
++ 1.652s  step 2  FINAL         degraded  flaky_api: order-8841 -> stale-order-8841 [cache] (from cache)
 ------------------------------------------------------------------------
 
   status:          DEGRADED
   steps ok/deg/fail: 0/1/0
+  spend:           $0.0060 of $1.00 ceiling
   classifications: timeout
   answer:          flaky_api: order-8841 -> stale-order-8841 [cache] (from cache)
   trace:           C:\Users\dev\Projects\agent-harness\traces\demo-timeout_then_cache.jsonl
