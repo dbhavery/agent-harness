@@ -1,7 +1,7 @@
 # Agent orchestration reliability harness
 
 A small, inspectable agent workflow that demonstrates **surviving real operational
-edge cases** — the failure modes that break agentic systems in the field:
+edge cases**: the failure modes that break agentic systems in the field:
 flaky upstreams, hanging calls, malformed tool output, missing context, runaway
 loops, unbounded spend, and unsafe actions. It is a **portfolio reliability
 harness**, not a production service and it makes no production claims. The point
@@ -9,7 +9,7 @@ is to show the *machinery*: typed tool contracts, a deterministic orchestrator,
 structured traces, bounded retry with fallback, a wall-clock watchdog on every
 call, run ceilings on cost and steps, a real failure taxonomy, and a safety gate.
 
-Everything runs **offline and deterministically** — no API keys, no network. A
+Everything runs **offline and deterministically**: no API keys, no network. A
 scripted, fixture-driven planner drives the loop so a run is byte-for-byte
 reproducible (the injectable clock means tests assert exact timing). An optional
 real-LLM planner exists behind environment variables only.
@@ -122,12 +122,12 @@ No editable install? Everything also runs with `PYTHONPATH=src` (e.g.
   a metered endpoint bills for a call whether or not it answers. Hitting a
   ceiling halts the run, with no fallback: `RunResult.halted`, `halt_reason`,
   `steps_skipped` and `cost_usd` say what stopped and what was never attempted.
-- **Trace bus** (`trace.py`). Every step — plan, tool_call, tool_result, retry,
-  safety_block, classify, fallback, limit, final — is one structured `TraceEvent`
+- **Trace bus** (`trace.py`). Every step (plan, tool_call, tool_result, retry,
+  safety_block, classify, fallback, limit, final) is one structured `TraceEvent`
   appended to `traces/<run_id>.jsonl`. The report and the tests both read it, so
   the trace is the single source of truth.
 - **Retry / fallback** (`retry.py`). Bounded retries with exponential,
-  capped backoff — but **only for retryable classes** (transient, timeout).
+  capped backoff, but **only for retryable classes** (transient, timeout).
   When retries are exhausted the orchestrator degrades to a secondary/cached
   source, or returns a safe refusal, and keeps the run alive.
 - **Failure classification** (`classification.py`). Eight real categories keyed
@@ -141,7 +141,7 @@ No editable install? Everything also runs with `PYTHONPATH=src` (e.g.
 
 ---
 
-## What the demo proves — retry → classify → recover
+## What the demo proves: retry → classify → recover
 
 `python -m agent_harness demo flaky_recovery` (real output):
 
@@ -153,7 +153,7 @@ No editable install? Everything also runs with `PYTHONPATH=src` (e.g.
 ```
 
 The `timeout_then_cache` scenario shows the harness **bound a hang and degrade**
-instead of stalling — note the deadline enforcement and the fallback:
+instead of stalling. Note the deadline enforcement and the fallback:
 
 ```jsonl
 {"event":"retry","classification":"timeout","detail":"attempt 0 failed (measured 500ms >= budget 500ms (tool declared 10000ms)); backing off 50ms",...}
@@ -172,7 +172,7 @@ trace report.
 
 ---
 
-## Tests — one per edge case
+## Tests: one per edge case
 
 `pytest -q` → **59 passed**. The resilience proofs (in `tests/`):
 
